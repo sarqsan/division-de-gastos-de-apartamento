@@ -1,0 +1,8 @@
+{
+  "name": "Dividir Facturas de Apartamento 2.0 ",
+  "description": "Aplicación para el cálculo y reparto automático de consumo de luz y agua entre dos apartamentos divididos con lecturas diarias de contador, subida de facturas con IA de Gemini e informes PDF.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

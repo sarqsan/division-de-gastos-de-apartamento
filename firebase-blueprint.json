@@ -1,0 +1,120 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role, apartment assignment, and verification status",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Auth User ID" },
+        "email": { "type": "string", "format": "email", "description": "Verified email address" },
+        "role": { "type": "string", "enum": ["propietario", "inquilino_ver", "inquilino_editar"], "description": "User role: landlord, read-only tenant, or contributor tenant" },
+        "apartment": { "type": "string", "enum": ["A", "B", "none"], "description": "Apartment division assignment" },
+        "landlordUid": { "type": "string", "description": "UID of the landlord owner" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "apartment"]
+    },
+    "Property": {
+      "title": "Property",
+      "description": "Property details including entry codes for apartments",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique property ID" },
+        "landlordUid": { "type": "string", "description": "UID of the landlord owner" },
+        "address": { "type": "string", "description": "Apartment address" },
+        "codeAptA_ver": { "type": "string", "description": "Registration code for Apt A Solo ver" },
+        "codeAptA_editar": { "type": "string", "description": "Registration code for Apt A Añadir lecturas" },
+        "codeAptB_ver": { "type": "string", "description": "Registration code for Apt B Solo ver" },
+        "codeAptB_editar": { "type": "string", "description": "Registration code for Apt B Añadir lecturas" }
+      },
+      "required": ["id", "landlordUid", "codeAptA_ver", "codeAptA_editar", "codeAptB_ver", "codeAptB_editar"]
+    },
+    "BillLuz": {
+      "title": "BillLuz",
+      "description": "Electricity bills uploaded monthly by the landlord",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Bill document ID" },
+        "landlordUid": { "type": "string", "description": "UID of the landlord owner" },
+        "totalAmount": { "type": "number", "description": "Total cost of electricity bill in Euros" },
+        "startDate": { "type": "string", "format": "date", "description": "Billing period start date" },
+        "endDate": { "type": "string", "format": "date", "description": "Billing period end date" },
+        "totalKwh": { "type": "number", "description": "Total energy consumed in kWh" },
+        "fixedCost": { "type": "number", "description": "Fixed part of the electricity bill in Euros" },
+        "variableCost": { "type": "number", "description": "Variable part of the electricity bill in Euros" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "landlordUid", "totalAmount", "startDate", "endDate"]
+    },
+    "BillAgua": {
+      "title": "BillAgua",
+      "description": "Water bills uploaded quarterly (every 3 months) by the landlord",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Bill document ID" },
+        "landlordUid": { "type": "string", "description": "UID of the landlord owner" },
+        "totalAmount": { "type": "number", "description": "Total cost of water bill in Euros" },
+        "startDate": { "type": "string", "format": "date", "description": "Billing period start date" },
+        "endDate": { "type": "string", "format": "date", "description": "Billing period end date" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "landlordUid", "totalAmount", "startDate", "endDate"]
+    },
+    "ReadingLuz": {
+      "title": "ReadingLuz",
+      "description": "Daily sub-meter electricity readings added by contributor tenants",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Reading document ID" },
+        "landlordUid": { "type": "string", "description": "UID of the landlord owner" },
+        "tenantUid": { "type": "string", "description": "UID of the tenant adding the reading" },
+        "apartment": { "type": "string", "enum": ["A", "B"], "description": "Apartment name" },
+        "date": { "type": "string", "format": "date", "description": "Reading date" },
+        "value": { "type": "number", "description": "Meter kWh value" },
+        "imageUrl": { "type": "string", "description": "Data URL or mock storage URL of the counter image" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "landlordUid", "tenantUid", "apartment", "date", "value"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Notifications or reminders generated for users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Notification ID" },
+        "userId": { "type": "string", "description": "Target user ID" },
+        "title": { "type": "string", "description": "Notification title" },
+        "body": { "type": "string", "description": "Notification content" },
+        "read": { "type": "boolean", "description": "Is notification read" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "title", "body", "read", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile collection"
+    },
+    "/properties/{propertyId}": {
+      "schema": "Property",
+      "description": "Properties collection, containing codes to join apartments"
+    },
+    "/bills_luz/{billId}": {
+      "schema": "BillLuz",
+      "description": "Electricity bills uploaded by the landlord"
+    },
+    "/bills_agua/{billId}": {
+      "schema": "BillAgua",
+      "description": "Water bills uploaded by the landlord"
+    },
+    "/readings_luz/{readingId}": {
+      "schema": "ReadingLuz",
+      "description": "Daily sub-meter electricity readings by tenants"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Notifications collection"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+# Render Blueprint configuration for Render.com deployment
+services:
+  - type: web
+    name: reparto-gastos-luz-agua
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: GEMINI_API_KEY
+        sync: false
