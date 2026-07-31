@@ -58,7 +58,7 @@ async function generateContentWithRetry(genAI: GoogleGenAI, options: any, maxRet
 }
 
 async function callGeminiWithModelFallback(genAI: GoogleGenAI, payload: any) {
-  const modelsToTry = ["gemini-3.6-flash", "gemini-flash-latest"];
+  const modelsToTry = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash"];
   let lastError: any = null;
 
   for (const modelName of modelsToTry) {
@@ -204,36 +204,60 @@ async function startServer() {
         return res.status(400).json({ error: "Falta el contenido del archivo en base64" });
       }
 
+      // Detect real MIME type
+      let actualMimeType = mimeType || "image/jpeg";
+      if (fileBase64.startsWith("data:application/pdf")) {
+        actualMimeType = "application/pdf";
+      } else if (fileBase64.startsWith("data:image/png")) {
+        actualMimeType = "image/png";
+      } else if (fileBase64.startsWith("data:image/webp")) {
+        actualMimeType = "image/webp";
+      } else if (fileBase64.startsWith("data:image/jpeg") || fileBase64.startsWith("data:image/jpg")) {
+        actualMimeType = "image/jpeg";
+      }
+
       // Initialize AI
       const genAI = getGenAI(req.body?.apiKey);
 
-      // Clean the base64 string if it contains the data:image prefix
+      // Clean the base64 string
       const cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, "");
 
       const serviceTypeInstruction = forcedServiceType === "agua"
         ? `REGLA CRÍTICA DE TIPO: Esta factura HA SIDO SUBIDA COMO FACTURA DE AGUA. Asigna OBLIGATORIAMENTE "tipo": "agua".`
         : forcedServiceType === "luz"
         ? `REGLA CRÍTICA DE TIPO: Esta factura HA SIDO SUBIDA COMO FACTURA DE LUZ. Asigna OBLIGATORIAMENTE "tipo": "luz".`
-        : `Determina si es de "luz" o "agua".`;
+        : `Determina si el suministro es de "luz" o "agua".`;
 
       const systemPrompt = `
-        Analiza esta factura de servicios públicos y extrae los siguientes datos en un formato JSON limpio.
-        Devuelve ÚNICAMENTE el objeto JSON sin bloques de código markdown.
+        Eres un experto auditor contable especializado en facturas de suministros de luz y agua en España (Endesa, Iberdrola, Naturgy, TotalEnergies, Canal Isabel II, Aqualia, Aigües de Barcelona, Emasesa, etc.).
+        Analiza detenidamente la factura adjunta y extrae los datos reales con MÁXIMA PRECISIÓN:
+
         ${serviceTypeInstruction}
-        
-        Campos a extraer:
-        {
-          "tipo": "luz" | "agua",
-          "startDate": "YYYY-MM-DD" (fecha de inicio del periodo de facturación, si no se encuentra pon null),
-          "endDate": "YYYY-MM-DD" (fecha de fin del periodo de facturación, si no se encuentra pon null),
-          "totalAmount": número (coste total de la factura con IVA incluido),
-          "totalKwh": número (consumo de energía eléctrica en kWh, o 0 si es agua),
-          "fixedCost": número (coste de potencia contratada, impuestos fijos y alquiler de equipos, o null si no se distingue o es agua),
-          "variableCost": número (coste de la energía consumida en kWh, o null si no se distingue),
-          "totalVolume": número (consumo de agua en m³ o litros, o 0 si es luz)
-        }
-        
-        Sé preciso con los números y las fechas.
+
+        REGLAS DE EXTRACCIÓN EXACTA:
+        1. "startDate" y "endDate":
+           - Busca el PERIODO DE FACTURACIÓN / LECTURA (ej: "Periodo del 01/05/2024 al 30/06/2024" o "Desde 15.04.2024 hasta 14.05.2024").
+           - Convierte obligatoriamente al formato YYYY-MM-DD (ejemplo: "2024-05-01" y "2024-06-30").
+           - IMPORTANTE: NUNCA confundas la Fecha de Emisión o Fecha de Cobro con las fechas de inicio y fin del periodo de consumo.
+           - Si no aparece la fecha de inicio, usa null.
+
+        2. "totalAmount":
+           - El IMPORTE TOTAL FACTURADO O TOTAL A PAGAR (€ con IVA incluido).
+           - Debe ser un número numérico exacto (ejemplo: 84.50).
+
+        3. "totalKwh" (para luz):
+           - Consumo acumulado de energía eléctrica en kWh durante el periodo facturado.
+           - Si la factura es de agua, pon 0.
+
+        4. "totalVolume" (para agua):
+           - Consumo de agua en m³ (metros cúbicos) o litros durante el periodo.
+           - Si la factura es de luz, pon 0.
+
+        5. "fixedCost" y "variableCost":
+           - fixedCost: Término de potencia o cuota fija de servicio / alquiler de contador.
+           - variableCost: Importe del consumo de energía (kWh) o agua (m³).
+
+        Lee los números y fechas exactamente como aparecen impresos en el documento.
       `;
 
       let parsedData;
@@ -247,7 +271,7 @@ async function startServer() {
                 {
                   inlineData: {
                     data: cleanBase64,
-                    mimeType: mimeType || "image/jpeg"
+                    mimeType: actualMimeType
                   }
                 }
               ]
@@ -260,35 +284,35 @@ async function startServer() {
               properties: {
                 tipo: {
                   type: Type.STRING,
-                  description: "El tipo de servicio, puede ser 'luz' o 'agua'."
+                  description: "Tipo de suministro ('luz' o 'agua')."
                 },
                 startDate: {
                   type: Type.STRING,
-                  description: "La fecha de inicio del periodo de facturación en formato YYYY-MM-DD, o null si no se encuentra."
+                  description: "Fecha de inicio del periodo de facturación en formato YYYY-MM-DD o null."
                 },
                 endDate: {
                   type: Type.STRING,
-                  description: "La fecha de fin del periodo de facturación en formato YYYY-MM-DD, o null si no se encuentra."
+                  description: "Fecha de fin del periodo de facturación en formato YYYY-MM-DD o null."
                 },
                 totalAmount: {
                   type: Type.NUMBER,
-                  description: "El importe total facturado con impuestos incluidos."
+                  description: "Importe total de la factura a pagar con impuestos en euros."
                 },
                 totalKwh: {
                   type: Type.NUMBER,
-                  description: "El consumo de electricidad acumulado en kWh. Pon 0 si el tipo es 'agua'."
+                  description: "Consumo total de electricidad en kWh (0 si es agua)."
                 },
                 fixedCost: {
                   type: Type.NUMBER,
-                  description: "El coste fijo (potencia contratada, alquiler, etc.), o null si no se distingue o es agua."
+                  description: "Coste fijo (término de potencia, cuota fija) o null."
                 },
                 variableCost: {
                   type: Type.NUMBER,
-                  description: "El coste de la energía consumida, o null si no se distingue."
+                  description: "Coste variable de consumo de energía/agua o null."
                 },
                 totalVolume: {
                   type: Type.NUMBER,
-                  description: "El volumen total consumido en m³ o litros. Pon 0 si el tipo es 'luz'."
+                  description: "Volumen consumido de agua en m3 (0 si es luz)."
                 }
               },
               required: ["tipo", "totalAmount"]
@@ -311,25 +335,24 @@ async function startServer() {
         if (forcedServiceType === "agua" || forcedServiceType === "luz") {
           parsedData.tipo = forcedServiceType;
         }
+
+        return res.json({ success: true, data: parsedData });
+
       } catch (geminiError: any) {
-        console.log("[Gemini API / Lector Directo] Usando procesamiento del Motor Lector Directo de Facturas");
-        parsedData = getFallbackBillData(geminiError, {
-          forcedServiceType,
-          fileName,
-          fileBase64
+        console.error("[Gemini API Error / parse-bill]:", geminiError);
+        const userFriendlyError = formatGeminiError(geminiError);
+        return res.status(400).json({ 
+          success: false, 
+          error: userFriendlyError 
         });
       }
 
-      return res.json({ success: true, data: parsedData });
-
     } catch (error: any) {
-      console.log("[Lector Directo] Petición de factura resuelta con el Motor Lector Directo");
-      const fallback = getFallbackBillData(error, {
-        forcedServiceType: req.body?.forcedServiceType,
-        fileName: req.body?.fileName,
-        fileBase64: req.body?.fileBase64
+      console.error("[parse-bill general error]:", error);
+      return res.status(500).json({ 
+        success: false, 
+        error: "Error interno procesando la factura. Revisa el archivo o introduce los datos manualmente." 
       });
-      return res.json({ success: true, data: fallback });
     }
   });
 

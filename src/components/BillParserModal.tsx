@@ -105,9 +105,16 @@ export default function BillParserModal({ onClose, onSave, initialServiceType }:
     setError(null);
 
     try {
-      // Convert file (PDF, HEIC, WEBP, PNG, JPG, etc.) to normalized JPEG image Data URL
+      // Get base64 representation of original file
+      const rawBase64 = await fileToBase64(file);
+      
+      // Determine file MIME type
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      const mimeType = isPdf ? "application/pdf" : (file.type || "image/jpeg");
+
+      // Generate preview image Data URL for modal display
       const convertedDataUrl = await fileToImageDataUrl(file);
-      setFileDataUrl(convertedDataUrl);
+      setFileDataUrl(convertedDataUrl || rawBase64);
       
       const response = await fetch("/api/parse-bill", {
         method: "POST",
@@ -115,8 +122,8 @@ export default function BillParserModal({ onClose, onSave, initialServiceType }:
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          fileBase64: convertedDataUrl || (await fileToBase64(file)),
-          mimeType: "image/jpeg",
+          fileBase64: isPdf ? rawBase64 : (convertedDataUrl || rawBase64),
+          mimeType,
           fileName: file.name,
           forcedServiceType: initialServiceType,
           apiKey: userApiKey.trim() || undefined
@@ -126,50 +133,30 @@ export default function BillParserModal({ onClose, onSave, initialServiceType }:
       const resJson = await response.json();
 
       if (!response.ok || !resJson.success) {
-        throw new Error(resJson.error || "Error al analizar la factura");
+        throw new Error(resJson.error || "No se pudo extraer la información de la factura con la IA.");
       }
 
       const extracted = resJson.data;
 
-      // Update state with parsed values
+      // Update state with EXACT parsed values from Gemini
       setTipo(initialServiceType || (extracted.tipo === "agua" ? "agua" : "luz"));
       setStartDate(extracted.startDate || "");
       setEndDate(extracted.endDate || "");
-      setTotalAmount(extracted.totalAmount || 0);
-      setTotalKwh(extracted.totalKwh || 0);
-      setFixedCost(extracted.fixedCost || 0);
-      setVariableCost(extracted.variableCost || 0);
-      setTotalVolume(extracted.totalVolume || 0);
-      setIsQuotaExceeded(!!extracted.isQuotaExceeded);
-      setIsLocalEngine(!!extracted.isLocalEngine || !!extracted.isExtractedByFallback);
-      
-      // If direct engine was used, don't flag as missing key error
-      if (extracted.isLocalEngine || extracted.isExtractedByFallback) {
-        setIsApiKeyMissing(false);
-        setError(null);
-      } else {
-        setIsApiKeyMissing(!!extracted.isApiKeyMissing);
-      }
-      setIsSimulated(!!extracted.isSimulated);
+      setTotalAmount(typeof extracted.totalAmount === "number" ? extracted.totalAmount : parseFloat(extracted.totalAmount) || 0);
+      setTotalKwh(typeof extracted.totalKwh === "number" ? extracted.totalKwh : parseFloat(extracted.totalKwh) || 0);
+      setFixedCost(typeof extracted.fixedCost === "number" ? extracted.fixedCost : parseFloat(extracted.fixedCost) || 0);
+      setVariableCost(typeof extracted.variableCost === "number" ? extracted.variableCost : parseFloat(extracted.variableCost) || 0);
+      setTotalVolume(typeof extracted.totalVolume === "number" ? extracted.totalVolume : parseFloat(extracted.totalVolume) || 0);
 
-      setParsed(true);
-    } catch (err: any) {
-      console.error(err);
-      // Fallback directly to local editing form so user is never stuck
-      setTipo(initialServiceType || "luz");
-      setStartDate(new Date().toISOString().split("T")[0]);
-      const end = new Date();
-      end.setDate(end.getDate() + 30);
-      setEndDate(end.toISOString().split("T")[0]);
-      setTotalAmount(initialServiceType === "agua" ? 38.5 : 84.6);
-      setTotalKwh(initialServiceType === "agua" ? 0 : 260);
-      setFixedCost(initialServiceType === "agua" ? 14.5 : 28.2);
-      setVariableCost(initialServiceType === "agua" ? 24.0 : 56.4);
-      setTotalVolume(initialServiceType === "agua" ? 14 : 0);
-      setIsLocalEngine(true);
       setIsApiKeyMissing(false);
       setError(null);
       setParsed(true);
+    } catch (err: any) {
+      console.error("[BillParserModal Error]:", err);
+      setError(
+        err.message || 
+        "No se pudo analizar la factura automáticamente. Por favor, asegúrate de que la imagen o PDF sea legible o introduce los datos manualmente."
+      );
     } finally {
       setParsing(false);
     }
