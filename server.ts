@@ -57,6 +57,29 @@ async function generateContentWithRetry(genAI: GoogleGenAI, options: any, maxRet
   throw new Error("Se agotaron los reintentos al conectar con la IA.");
 }
 
+async function callGeminiWithModelFallback(genAI: GoogleGenAI, payload: any) {
+  const modelsToTry = ["gemini-3.6-flash", "gemini-flash-latest"];
+  let lastError: any = null;
+
+  for (const modelName of modelsToTry) {
+    try {
+      console.log(`[Gemini API] Procesando con modelo: ${modelName}`);
+      return await generateContentWithRetry(genAI, {
+        ...payload,
+        model: modelName
+      });
+    } catch (err: any) {
+      console.error(`[Gemini API] Fallo con modelo ${modelName}:`, err?.message || err);
+      lastError = err;
+      const isNotFound = err?.status === 404 || String(err?.message || "").includes("404") || String(err?.message || "").includes("not found");
+      if (!isNotFound) {
+        throw err;
+      }
+    }
+  }
+  throw lastError || new Error("No se pudo procesar la solicitud con Gemini.");
+}
+
 function formatGeminiError(error: any): string {
   const errorMsg = error?.message || error?.error?.message || "";
   let errorStr = "";
@@ -180,8 +203,7 @@ async function startServer() {
 
       let parsedData;
       try {
-        const response = await generateContentWithRetry(genAI, {
-          model: "gemini-2.5-flash",
+        const response = await callGeminiWithModelFallback(genAI, {
           contents: [
             {
               role: "user",
@@ -310,8 +332,7 @@ async function startServer() {
 
       let parsedData;
       try {
-        const response = await generateContentWithRetry(genAI, {
-          model: "gemini-2.5-flash",
+        const response = await callGeminiWithModelFallback(genAI, {
           contents: [
             {
               role: "user",
