@@ -8,16 +8,12 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // Helper to safely initialize Google GenAI
-let ai: GoogleGenAI | null = null;
-function getGenAI(): GoogleGenAI {
-  const key = process.env.GEMINI_API_KEY;
+function getGenAI(customApiKey?: string): GoogleGenAI {
+  const key = (customApiKey && customApiKey.trim() !== "") ? customApiKey.trim() : process.env.GEMINI_API_KEY;
   if (!key || key.trim() === "") {
-    throw new Error("GEMINI_API_KEY_MISSING: Falta configurar la variable GEMINI_API_KEY en la sección Environment de Render.");
+    throw new Error("GEMINI_API_KEY_MISSING: Falta configurar la variable GEMINI_API_KEY en la sección Environment de Render o proporcionarla en la app.");
   }
-  if (!ai) {
-    ai = new GoogleGenAI({ apiKey: key });
-  }
-  return ai;
+  return new GoogleGenAI({ apiKey: key });
 }
 
 // Helper function to call generateContent with retry mechanism (exponential backoff with jitter)
@@ -151,7 +147,7 @@ async function startServer() {
       }
 
       // Initialize AI
-      const genAI = getGenAI();
+      const genAI = getGenAI(req.body?.apiKey);
 
       // Clean the base64 string if it contains the data:image prefix
       const cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, "");
@@ -287,7 +283,7 @@ async function startServer() {
         return res.status(400).json({ error: "Falta el contenido de la imagen en base64" });
       }
 
-      const genAI = getGenAI();
+      const genAI = getGenAI(req.body?.apiKey);
       const cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, "");
 
       const systemPrompt = `

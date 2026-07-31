@@ -23,6 +23,12 @@ export default function BillParserModal({ onClose, onSave, initialServiceType }:
   const [dragActive, setDragActive] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Gemini API Key state
+  const [userApiKey, setUserApiKey] = useState<string>(() => {
+    return localStorage.getItem("user_gemini_api_key") || "";
+  });
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   
   // Parsed and editable state
   const [parsed, setParsed] = useState(false);
@@ -111,7 +117,8 @@ export default function BillParserModal({ onClose, onSave, initialServiceType }:
           fileBase64: convertedDataUrl || (await fileToBase64(file)),
           mimeType: "image/jpeg",
           fileName: file.name,
-          forcedServiceType: initialServiceType
+          forcedServiceType: initialServiceType,
+          apiKey: userApiKey.trim() || undefined
         })
       });
 
@@ -249,24 +256,76 @@ export default function BillParserModal({ onClose, onSave, initialServiceType }:
                 )}
               </div>
  
-              {isApiKeyMissing && (
-                <div className="p-3 bg-red-50 rounded border border-red-300 text-red-950 text-[11px] space-y-1.5">
+              {/* Inline API Key Input / Config bar */}
+              <div className="p-3 bg-slate-50 rounded border border-slate-200 space-y-2 text-[11px]">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
+                    Clave de API Gemini (Para lectura inteligente)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKeyInput(!showApiKeyInput)}
+                    className="text-indigo-600 hover:text-indigo-800 font-semibold underline cursor-pointer text-[10.5px]"
+                  >
+                    {showApiKeyInput ? "Ocultar" : userApiKey ? "🔑 Clave Guardada (Editar)" : "🔑 Pega tu API Key aquí para probar sin esperar a Render"}
+                  </button>
+                </div>
+
+                {(showApiKeyInput || isApiKeyMissing || (!userApiKey && error)) && (
+                  <div className="p-2 bg-white rounded border border-indigo-200 space-y-2 text-slate-700">
+                    <p className="text-[10.5px]">
+                      Pega tu clave de Gemini obtenida en <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-600 underline font-bold">aistudio.google.com/app/apikey</a>:
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Pega aquí tu clave (ej. AQ... o AIza...)"
+                        value={userApiKey}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setUserApiKey(val);
+                          localStorage.setItem("user_gemini_api_key", val.trim());
+                          if (val.trim()) setIsApiKeyMissing(false);
+                        }}
+                        className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded font-mono text-[11px] text-slate-800 focus:bg-white focus:border-indigo-500 outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          localStorage.setItem("user_gemini_api_key", userApiKey.trim());
+                          setShowApiKeyInput(false);
+                          setIsApiKeyMissing(false);
+                          setError(null);
+                        }}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded text-[11px] shrink-0 cursor-pointer"
+                      >
+                        Guardar Clave
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {isApiKeyMissing && !userApiKey && (
+                <div className="p-3 bg-red-50 rounded border border-red-300 text-red-950 text-[11px] space-y-2">
                   <div className="flex items-center gap-1.5 font-bold text-red-800 text-xs">
                     <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
-                    🚨 Falta añadir GEMINI_API_KEY en Render
+                    🚨 Falta añadir GEMINI_API_KEY en tu cuenta de Render
                   </div>
                   <p className="text-slate-700 leading-snug">
-                    Para que la IA procese facturas automáticamente en tu web desplegada en Render:
+                    Render ya ha compilado tu última actualización, pero tu servidor en la nube no tiene la variable con la clave secreta. Sigue estos 4 pasos rápidos:
                   </p>
                   <ol className="list-decimal pl-4 space-y-1 text-slate-800 text-[10.5px]">
                     <li>Entra en tu panel de <a href="https://dashboard.render.com" target="_blank" rel="noreferrer" className="text-blue-600 underline font-bold">dashboard.render.com</a>.</li>
-                    <li>Abre tu Web Service (<strong>reparto-gastos-luz-agua</strong>).</li>
-                    <li>En el menú izquierdo, haz clic en <strong>Environment</strong>.</li>
-                    <li>Pulsa <strong>Add Environment Variable</strong>.</li>
-                    <li>Clave (Key): <code className="bg-white px-1 py-0.5 rounded border border-red-200 font-bold text-red-900">GEMINI_API_KEY</code></li>
-                    <li>Valor (Value): Tu clave de Gemini (obtén una gratis en <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-600 underline font-bold">aistudio.google.com</a>).</li>
-                    <li>Pulsa <strong>Save Changes</strong>. Render se actualizará solo.</li>
+                    <li>Haz clic en tu servicio web (<strong>reparto-gastos-luz-agua</strong>).</li>
+                    <li>En el menú lateral izquierdo, entra en <strong>Environment</strong>.</li>
+                    <li>Pulsa <strong>Add Environment Variable</strong> &rarr; Key: <code className="bg-white px-1 py-0.5 rounded border border-red-200 font-bold text-red-900">GEMINI_API_KEY</code> | Value: Tu clave de Google AI Studio.</li>
+                    <li>Pulsa <strong>Save Changes</strong>. ¡Listo!</li>
                   </ol>
+                  <p className="text-[10.5px] font-bold text-indigo-900 bg-indigo-50 p-2 rounded border border-indigo-200">
+                    💡 O bien, si no quieres ir a Render, pega tu clave en la casilla de arriba ☝️ y funcionará al instante.
+                  </p>
                 </div>
               )}
 
