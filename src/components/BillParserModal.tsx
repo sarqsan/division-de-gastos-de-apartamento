@@ -35,6 +35,7 @@ export default function BillParserModal({ onClose, onSave, initialServiceType }:
   const [variableCost, setVariableCost] = useState<number>(0);
   const [totalVolume, setTotalVolume] = useState<number>(0);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
+  const [isApiKeyMissing, setIsApiKeyMissing] = useState(false);
   const [isSimulated, setIsSimulated] = useState(false);
   const [fileDataUrl, setFileDataUrl] = useState<string | undefined>(undefined);
 
@@ -132,14 +133,19 @@ export default function BillParserModal({ onClose, onSave, initialServiceType }:
       setVariableCost(extracted.variableCost || 0);
       setTotalVolume(extracted.totalVolume || 0);
       setIsQuotaExceeded(!!extracted.isQuotaExceeded);
+      setIsApiKeyMissing(!!extracted.isApiKeyMissing || (extracted.errorMessage && extracted.errorMessage.includes("GEMINI_API_KEY")));
       setIsSimulated(!!extracted.isSimulated);
 
       setParsed(true);
     } catch (err: any) {
       console.error(err);
+      const msg = err.message || "";
+      if (msg.includes("GEMINI_API_KEY")) {
+        setIsApiKeyMissing(true);
+      }
       setError(
-        err.message || 
-        "Hubo un error al conectar con el servidor de IA de Gemini. Asegúrate de configurar GEMINI_API_KEY o ingresa los datos de forma manual."
+        msg || 
+        "Hubo un error al conectar con la IA de Gemini. Verifica la variable GEMINI_API_KEY en Render o ingresa los datos manualmente."
       );
     } finally {
       setParsing(false);
@@ -243,7 +249,28 @@ export default function BillParserModal({ onClose, onSave, initialServiceType }:
                 )}
               </div>
  
-              {error && (
+              {isApiKeyMissing && (
+                <div className="p-3 bg-red-50 rounded border border-red-300 text-red-950 text-[11px] space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-red-800 text-xs">
+                    <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
+                    🚨 Falta añadir GEMINI_API_KEY en Render
+                  </div>
+                  <p className="text-slate-700 leading-snug">
+                    Para que la IA procese facturas automáticamente en tu web desplegada en Render:
+                  </p>
+                  <ol className="list-decimal pl-4 space-y-1 text-slate-800 text-[10.5px]">
+                    <li>Entra en tu panel de <a href="https://dashboard.render.com" target="_blank" rel="noreferrer" className="text-blue-600 underline font-bold">dashboard.render.com</a>.</li>
+                    <li>Abre tu Web Service (<strong>reparto-gastos-luz-agua</strong>).</li>
+                    <li>En el menú izquierdo, haz clic en <strong>Environment</strong>.</li>
+                    <li>Pulsa <strong>Add Environment Variable</strong>.</li>
+                    <li>Clave (Key): <code className="bg-white px-1 py-0.5 rounded border border-red-200 font-bold text-red-900">GEMINI_API_KEY</code></li>
+                    <li>Valor (Value): Tu clave de Gemini (obtén una gratis en <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-600 underline font-bold">aistudio.google.com</a>).</li>
+                    <li>Pulsa <strong>Save Changes</strong>. Render se actualizará solo.</li>
+                  </ol>
+                </div>
+              )}
+
+              {error && !isApiKeyMissing && (
                 <div className="p-2.5 bg-amber-50 rounded border border-amber-200 text-amber-800 text-[11px] flex gap-2">
                   <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
                   <div>
@@ -284,7 +311,21 @@ export default function BillParserModal({ onClose, onSave, initialServiceType }:
           ) : (
             /* Editing / Reviewing Form */
             <div className="space-y-3">
-              {isQuotaExceeded ? (
+              {isApiKeyMissing ? (
+                <div className="p-3 bg-red-50 rounded border border-red-300 text-red-950 text-[11px] space-y-1.5 mb-1">
+                  <div className="flex items-center gap-1.5 font-bold text-red-800 text-xs">
+                    <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
+                    🚨 Falta configurar GEMINI_API_KEY en Render
+                  </div>
+                  <p className="text-slate-700 leading-snug">
+                    No se ha podido conectar con Gemini porque falta la variable de entorno en Render. Rellena los datos manualmente o configúrala en Render:
+                  </p>
+                  <ol className="list-decimal pl-4 space-y-0.5 text-slate-800 text-[10.5px]">
+                    <li>En <a href="https://dashboard.render.com" target="_blank" rel="noreferrer" className="text-blue-600 underline font-bold">dashboard.render.com</a> &rarr; Tu Web Service &rarr; <strong>Environment</strong>.</li>
+                    <li>Añade <code className="bg-white px-1 py-0.5 rounded border border-red-200 font-bold text-red-900">GEMINI_API_KEY</code> con tu clave de <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-600 underline font-bold">Google AI Studio</a>.</li>
+                  </ol>
+                </div>
+              ) : isQuotaExceeded ? (
                 <div className="p-2.5 bg-amber-50 rounded border border-amber-200 text-amber-800 text-[11px] flex gap-2 mb-1">
                   <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
                   <div>

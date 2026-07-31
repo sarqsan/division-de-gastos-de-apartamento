@@ -10,11 +10,11 @@ dotenv.config();
 // Helper to safely initialize Google GenAI
 let ai: GoogleGenAI | null = null;
 function getGenAI(): GoogleGenAI {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key || key.trim() === "") {
+    throw new Error("GEMINI_API_KEY_MISSING: Falta configurar la variable GEMINI_API_KEY en la sección Environment de Render.");
+  }
   if (!ai) {
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) {
-      throw new Error("La variable de entorno GEMINI_API_KEY no está configurada");
-    }
     ai = new GoogleGenAI({ apiKey: key });
   }
   return ai;
@@ -70,6 +70,9 @@ function formatGeminiError(error: any): string {
     errorStr = error ? String(error) : "";
   }
   
+  if (errorMsg.includes("GEMINI_API_KEY_MISSING") || errorStr.includes("GEMINI_API_KEY_MISSING")) {
+    return "Falta configurar la variable GEMINI_API_KEY en Render. Ve a tu Dashboard de Render -> servicio backend -> Environment y añade GEMINI_API_KEY.";
+  }
   if (errorStr.includes("RESOURCE_EXHAUSTED") || errorStr.includes("quota") || errorMsg.includes("quota") || errorStr.includes("429") || errorMsg.includes("429")) {
     return "Límite de cuota de la IA de Gemini superado. Por favor, introduce los datos de forma manual usando el botón o formulario.";
   }
@@ -91,6 +94,7 @@ function getFallbackBillData(error?: any): any {
   } catch (e) {
     errorStr = error ? String(error) : "";
   }
+  const isKeyMissing = errorMsg.includes("GEMINI_API_KEY_MISSING") || errorStr.includes("GEMINI_API_KEY_MISSING");
   const isQuota = errorStr.includes("RESOURCE_EXHAUSTED") || errorStr.includes("quota") || errorStr.includes("429") || errorStr.includes("limit: 20") || errorMsg.includes("quota") || errorMsg.includes("429") || errorMsg.includes("limit: 20");
   
   return {
@@ -104,7 +108,10 @@ function getFallbackBillData(error?: any): any {
     totalVolume: 0,
     isSimulated: true,
     isQuotaExceeded: isQuota,
-    errorMessage: error ? (errorMsg || String(error)) : null
+    isApiKeyMissing: isKeyMissing,
+    errorMessage: isKeyMissing 
+      ? "Falta la API KEY de Gemini en Render (GEMINI_API_KEY)"
+      : (error ? (errorMsg || String(error)) : null)
   };
 }
 
@@ -178,7 +185,7 @@ async function startServer() {
       let parsedData;
       try {
         const response = await generateContentWithRetry(genAI, {
-          model: "gemini-3.5-flash",
+          model: "gemini-2.5-flash",
           contents: [
             {
               role: "user",
@@ -308,7 +315,7 @@ async function startServer() {
       let parsedData;
       try {
         const response = await generateContentWithRetry(genAI, {
-          model: "gemini-3.5-flash",
+          model: "gemini-2.5-flash",
           contents: [
             {
               role: "user",
