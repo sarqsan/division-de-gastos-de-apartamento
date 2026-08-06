@@ -59,6 +59,20 @@ export default function LandlordDashboard({ user, onLogout }: LandlordDashboardP
   });
   const [readingTargetApt, setReadingTargetApt] = useState<"A" | "B">(defaultReadingApt);
   const [activeReadingSubTab, setActiveReadingSubTab] = useState<"batch" | "single">("batch");
+  const currentYear = new Date().getFullYear();
+  const isJanuary = new Date().getMonth() === 0;
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+
+  const handleReadingYearChange = (newYear: number) => {
+    setSelectedYear(newYear);
+    if (singleReadingDate) {
+      const parts = singleReadingDate.split("-");
+      if (parts.length === 3) {
+        setSingleReadingDate(`${newYear}-${parts[1]}-${parts[2]}`);
+      }
+    }
+  };
+
   const [singleReadingDate, setSingleReadingDate] = useState<string>(new Date().toISOString().split("T")[0]);
   const [singleReadingValue, setSingleReadingValue] = useState<string>("");
   const [singleReadingImage, setSingleReadingImage] = useState<string | null>(null);
@@ -323,7 +337,7 @@ export default function LandlordDashboard({ user, onLogout }: LandlordDashboardP
   const handleSingleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      const extractedDate = extractDateFromFile(file);
+      const extractedDate = extractDateFromFile(file, selectedYear);
       if (extractedDate) {
         setSingleReadingDate(extractedDate);
       }
@@ -343,7 +357,7 @@ export default function LandlordDashboard({ user, onLogout }: LandlordDashboardP
           const response = await fetch("/api/parse-reading", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fileBase64: base64 }),
+            body: JSON.stringify({ fileBase64: base64, targetYear: selectedYear }),
           });
           const resJson = await response.json();
           if (response.ok && resJson.success) {
@@ -438,7 +452,7 @@ export default function LandlordDashboard({ user, onLogout }: LandlordDashboardP
             r.onload = () => resolve(r.result as string);
             r.readAsDataURL(file);
           });
-          const initialDate = extractDateFromFile(file);
+          const initialDate = extractDateFromFile(file, selectedYear);
           const initialKw = extractKwFromFile(file);
 
           return {
@@ -479,7 +493,7 @@ export default function LandlordDashboard({ user, onLogout }: LandlordDashboardP
           const response = await fetch("/api/parse-reading", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fileBase64: pending.preview }),
+            body: JSON.stringify({ fileBase64: pending.preview, targetYear: selectedYear }),
           });
           const resJson = await response.json();
 
@@ -1368,6 +1382,50 @@ export default function LandlordDashboard({ user, onLogout }: LandlordDashboardP
               </div>
 
               {/* BATCH UPLOAD SECTION */}
+              {/* Year Switcher Control for Landlord */}
+              <div className="p-2.5 bg-blue-50/50 rounded border border-blue-200/80 space-y-1.5 mb-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                    <Calendar className="h-3.5 w-3.5 text-blue-600" /> Año Predeterminado de Lecturas
+                  </label>
+                  <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
+                    {selectedYear}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleReadingYearChange(currentYear)}
+                    className={`py-1 px-2 rounded text-[11px] font-bold border transition cursor-pointer ${
+                      selectedYear === currentYear
+                        ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                        : "bg-white text-slate-700 border-slate-250 hover:bg-slate-100"
+                    }`}
+                  >
+                    {currentYear} (Año actual)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleReadingYearChange(currentYear - 1)}
+                    className={`py-1 px-2 rounded text-[11px] font-bold border transition cursor-pointer ${
+                      selectedYear === currentYear - 1
+                        ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                        : "bg-white text-slate-700 border-slate-250 hover:bg-slate-100"
+                    }`}
+                  >
+                    {currentYear - 1} (Año anterior)
+                  </button>
+                </div>
+                {isJanuary && (
+                  <p className="text-[10px] text-amber-800 bg-amber-50 p-1.5 rounded border border-amber-200 flex items-start gap-1">
+                    <span className="shrink-0">💡</span>
+                    <span>
+                      <strong>Enero:</strong> Si estás subiendo fotos de lecturas de Diciembre del año pasado, selecciona <strong>{currentYear - 1}</strong>.
+                    </span>
+                  </p>
+                )}
+              </div>
+
               {activeReadingSubTab === "batch" ? (
                 <div className="space-y-4 pt-2">
                   <div className="p-3 bg-blue-50/50 rounded border border-blue-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">

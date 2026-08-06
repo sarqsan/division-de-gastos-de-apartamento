@@ -101,6 +101,30 @@ function formatGeminiError(error: any): string {
   return errorMsg || "No se pudo comunicar con el servicio de Inteligencia Artificial de Gemini. Puedes rellenar los datos de forma manual.";
 }
 
+function sanitizeYearForDate(dateStr: string | null | undefined, targetYear?: number): string | null {
+  if (!dateStr || typeof dateStr !== "string") return null;
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return dateStr;
+
+  const currentYear = targetYear || new Date().getFullYear();
+  const currentMonth = new Date().getMonth(); // 0 = January
+  const extractedYear = parseInt(match[1], 10);
+  const extractedMonth = parseInt(match[2], 10);
+
+  let anchorYear = currentYear;
+  // If uploaded in January (currentMonth === 0) and the reading/bill month is December (12), anchor to previous year
+  if (currentMonth === 0 && extractedMonth === 12) {
+    anchorYear = currentYear - 1;
+  }
+
+  // Force anchor year if extracted year is an outdated camera year (e.g. 2020, 2021, 2022, 2023, 2024)
+  if (extractedYear < currentYear - 1 || extractedYear > currentYear + 1) {
+    return `${anchorYear}-${match[2]}-${match[3]}`;
+  }
+
+  return dateStr;
+}
+
 function getFallbackBillData(error?: any, options?: { forcedServiceType?: string; fileName?: string; fileBase64?: string }): any {
   const now = new Date();
   const startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split("T")[0];
@@ -222,6 +246,9 @@ async function startServer() {
       // Clean the base64 string
       const cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, "");
 
+      // Target Year for date normalization (default to current year)
+      const targetYear = req.body?.targetYear ? parseInt(req.body.targetYear, 10) : new Date().getFullYear();
+
       const serviceTypeInstruction = forcedServiceType === "agua"
         ? `REGLA CRÍTICA DE TIPO: Esta factura HA SIDO SUBIDA COMO FACTURA DE AGUA. Asigna OBLIGATORIAMENTE "tipo": "agua".`
         : forcedServiceType === "luz"
@@ -234,10 +261,15 @@ async function startServer() {
 
         ${serviceTypeInstruction}
 
+        REGLA CRÍTICA DE AÑO DE REFERENCIA:
+        - El año predeterminado de esta factura es ${targetYear}.
+        - Si la factura indica de forma explícita las fechas pero no aparece el año o no es legible, ASIGNA OBLIGATORIAMENTE el año ${targetYear} (o ${targetYear - 1} si el periodo es de Diciembre y la factura se subió en Enero).
+        - NUNCA asignes un año arbitrario del pasado como 2020, 2021 o 2024.
+
         REGLAS DE EXTRACCIÓN EXACTA:
         1. "startDate" y "endDate":
-           - Busca el PERIODO DE FACTURACIÓN / LECTURA (ej: "Periodo del 01/05/2024 al 30/06/2024" o "Desde 15.04.2024 hasta 14.05.2024").
-           - Convierte obligatoriamente al formato YYYY-MM-DD (ejemplo: "2024-05-01" y "2024-06-30").
+           - Busca el PERIODO DE FACTURACIÓN / LECTURA (ej: "Periodo del 01/05 al 30/06" -> "${targetYear}-05-01" y "${targetYear}-06-30").
+           - Convierte obligatoriamente al formato YYYY-MM-DD.
            - IMPORTANTE: NUNCA confundas la Fecha de Emisión o Fecha de Cobro con las fechas de inicio y fin del periodo de consumo.
            - Si no aparece la fecha de inicio, usa null.
 
@@ -329,11 +361,17 @@ async function startServer() {
         if (cleanedJsonString.endsWith("```")) {
           cleanedJsonString = cleanedJsonString.substring(0, cleanedJsonString.length - 3);
         }
-        cleanedJsonString = cleanedJsonString.trim();
-
-        parsedData = JSON.parse(cleanedJsonString);
+                parsedData = JSON.parse(cleanedJsonString);
         if (forcedServiceType === "agua" || forcedServiceType === "luz") {
           parsedData.tipo = forcedServiceType;
+        }
+
+        // Sanitize extracted dates against targetYear/currentYear
+        if (parsedData.startDate) {
+          parsedData.startDate = sanitizeYearForDate(parsedData.startDate, targetYear);
+        }
+        if (parsedData.endDate) {
+          parsedData.endDate = sanitizeYearForDate(parsedData.endDate, targetYear);
         }
 
         return res.json({ success: true, data: parsedData });
@@ -368,6 +406,9 @@ async function startServer() {
       const genAI = getGenAI(req.body?.apiKey);
       const cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, "");
 
+      // Target Year for date normalization
+      const targetYear = req.body?.targetYear ? parseInt(req.body.targetYear, 10) : new Date().getFullYear();
+
       const systemPrompt = `
         Analiza esta imagen, que puede ser una fotografía de un contador físico de electricidad o una captura de pantalla de una aplicación móvil de monitoreo de energía (como Smart Life, Tuya, Shelly, etc.).
         
@@ -382,9 +423,9 @@ async function startServer() {
         2. La fecha correspondiente a la lectura o consumo.
            - REGLA ABSOLUTA Y CRÍTICA DE FORMATO DE FECHA: En las capturas y lecturas de este usuario, el formato de fecha es SIEMPRE MES/DÍA (MM/DD).
            - EL PRIMER NÚMERO REPRESENTA EL MES (1 a 12), Y EL SEGUNDO NÚMERO REPRESENTA EL DÍA (1 a 31).
-           - Por ejemplo: "06/07" o "06-07" o "06.07" corresponde al MES 06 (Junio) y DÍA 07 -> "YYYY-06-07" (7 de Junio). NUNCA lo interpretes como 6 de Julio.
-           - Por ejemplo: "05/12" o "05-12" corresponde al MES 05 (Mayo) y DÍA 12 -> "YYYY-05-12" (12 de Mayo).
-           - Por ejemplo: "06/07/2026", el primer número es el mes (Junio), el segundo es el día (07) y el tercero el año (2026) -> "2026-06-07".
+           - Por ejemplo: "06/07" o "06-07" o "06.07" corresponde al MES 06 (Junio) y DÍA 07 -> "${targetYear}-06-07" (7 de Junio). NUNCA lo interpretes como 6 de Julio.
+           - Por ejemplo: "05/12" o "05-12" corresponde al MES 05 (Mayo) y DÍA 12 -> "${targetYear}-05-12" (12 de Mayo).
+           - AÑO DE REFERENCIA: El año de la lectura es obligatorio **${targetYear}** (o **${targetYear - 1}** si la lectura es de Diciembre y se subió en Enero). NUNCA uses años obsoletos de cámara como 2020, 2021 o 2024.
            - Devuelve SIEMPRE la fecha resultante en formato ISO YYYY-MM-DD.
            
         Devuelve un objeto JSON estructurado con los campos 'value' y 'date'.
@@ -438,9 +479,16 @@ async function startServer() {
         cleanedJsonString = cleanedJsonString.trim();
 
         parsedData = JSON.parse(cleanedJsonString);
+
+        if (parsedData && parsedData.date) {
+          parsedData.date = sanitizeYearForDate(parsedData.date, targetYear);
+        }
       } catch (geminiError: any) {
         console.log("[Gemini API] Usando procesamiento local alternativo para lectura (servicio IA ocupado)");
         parsedData = getFallbackReadingData(geminiError);
+        if (parsedData && parsedData.date) {
+          parsedData.date = sanitizeYearForDate(parsedData.date, targetYear);
+        }
       }
 
       return res.json({ success: true, data: parsedData });

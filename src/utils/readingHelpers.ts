@@ -1,5 +1,24 @@
-export function extractDateFromFile(file: File): string {
+export function normalizeYear(extractedYear: number, month: number, targetYear?: number): number {
+  const currentYear = targetYear || new Date().getFullYear();
+  const currentMonth = new Date().getMonth(); // 0 = January
+
+  // If current month is January and reading month is December (12), anchor to currentYear - 1
+  if (currentMonth === 0 && month === 12) {
+    return currentYear - 1;
+  }
+
+  // If extracted year is in the past (e.g. < currentYear - 1) or in future (> currentYear + 1),
+  // override with currentYear
+  if (extractedYear < currentYear - 1 || extractedYear > currentYear + 1) {
+    return currentYear;
+  }
+
+  return extractedYear;
+}
+
+export function extractDateFromFile(file: File, targetYear?: number): string {
   const name = file.name;
+  const currentYear = targetYear || new Date().getFullYear();
 
   // 1. Try to find MM/DD/YYYY or MM-DD-YYYY or MM_DD_YYYY (Month FIRST, Day SECOND, e.g., 06/07/2026 -> 7 de Junio)
   const matchMonthFirstFull = name.match(/\b(\d{1,2})[-_./](\d{1,2})[-_./](\d{4})\b/);
@@ -7,10 +26,11 @@ export function extractDateFromFile(file: File): string {
     const month = parseInt(matchMonthFirstFull[1], 10);
     const day = parseInt(matchMonthFirstFull[2], 10);
     const year = parseInt(matchMonthFirstFull[3], 10);
-    if (year >= 2020 && year <= 2040 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      const validYear = normalizeYear(year, month, currentYear);
       const mStr = month.toString().padStart(2, '0');
       const dStr = day.toString().padStart(2, '0');
-      return `${year}-${mStr}-${dStr}`;
+      return `${validYear}-${mStr}-${dStr}`;
     }
   }
 
@@ -20,10 +40,10 @@ export function extractDateFromFile(file: File): string {
     const month = parseInt(matchMonthFirstShort[1], 10);
     const day = parseInt(matchMonthFirstShort[2], 10);
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-      const currentYear = new Date().getFullYear();
+      const validYear = normalizeYear(currentYear, month, currentYear);
       const mStr = month.toString().padStart(2, '0');
       const dStr = day.toString().padStart(2, '0');
-      return `${currentYear}-${mStr}-${dStr}`;
+      return `${validYear}-${mStr}-${dStr}`;
     }
   }
 
@@ -33,10 +53,11 @@ export function extractDateFromFile(file: File): string {
     const year = parseInt(matchIso[1], 10);
     const month = parseInt(matchIso[2], 10);
     const day = parseInt(matchIso[3], 10);
-    if (year >= 2020 && year <= 2040 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      const validYear = normalizeYear(year, month, currentYear);
       const mStr = month.toString().padStart(2, '0');
       const dStr = day.toString().padStart(2, '0');
-      return `${year}-${mStr}-${dStr}`;
+      return `${validYear}-${mStr}-${dStr}`;
     }
   }
 
@@ -46,24 +67,28 @@ export function extractDateFromFile(file: File): string {
     const year = parseInt(matchJoined[1], 10);
     const month = parseInt(matchJoined[2], 10);
     const day = parseInt(matchJoined[3], 10);
-    if (year >= 2020 && year <= 2040 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      const validYear = normalizeYear(year, month, currentYear);
       const mStr = month.toString().padStart(2, '0');
       const dStr = day.toString().padStart(2, '0');
-      return `${year}-${mStr}-${dStr}`;
+      return `${validYear}-${mStr}-${dStr}`;
     }
   }
 
-  // Fallback to lastModified timestamp
+  // Fallback to lastModified timestamp, anchored to valid year
   if (file.lastModified) {
     try {
-      const d = new Date(file.lastModified).toISOString().split("T")[0];
-      return d;
+      const d = new Date(file.lastModified);
+      const validYear = normalizeYear(d.getFullYear(), d.getMonth() + 1, currentYear);
+      const mStr = (d.getMonth() + 1).toString().padStart(2, '0');
+      const dStr = d.getDate().toString().padStart(2, '0');
+      return `${validYear}-${mStr}-${dStr}`;
     } catch (e) {
       // Ignore
     }
   }
 
-  return new Date().toISOString().split("T")[0];
+  return `${currentYear}-${(new Date().getMonth() + 1).toString().padStart(2, '0')}-${new Date().getDate().toString().padStart(2, '0')}`;
 }
 
 export function extractKwFromFile(file: File): string {

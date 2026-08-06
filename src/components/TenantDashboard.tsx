@@ -82,6 +82,20 @@ export default function TenantDashboard({ user, onLogout }: TenantDashboardProps
   
   // Reading add state
   const [currentDashboardTab, setCurrentDashboardTab] = useState<"summary" | "calendar">("summary");
+  const currentYear = new Date().getFullYear();
+  const isJanuary = new Date().getMonth() === 0;
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+
+  const handleReadingYearChange = (newYear: number) => {
+    setSelectedYear(newYear);
+    if (readingDate) {
+      const parts = readingDate.split("-");
+      if (parts.length === 3) {
+        setReadingDate(`${newYear}-${parts[1]}-${parts[2]}`);
+      }
+    }
+  };
+
   const [isAddingReading, setIsAddingReading] = useState(false);
   const [activeTab, setActiveTab] = useState<"single" | "multiple">("single");
   const [readingValue, setReadingValue] = useState("");
@@ -136,7 +150,7 @@ export default function TenantDashboard({ user, onLogout }: TenantDashboardProps
       const response = await fetch("/api/parse-reading", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileBase64: base64Data })
+        body: JSON.stringify({ fileBase64: base64Data, targetYear: selectedYear })
       });
       const resJson = await response.json();
       if (!response.ok || !resJson.success) {
@@ -157,7 +171,7 @@ export default function TenantDashboard({ user, onLogout }: TenantDashboardProps
           setReadingDate(extracted.date);
         } else if (file) {
           // Fallback to our intelligent local date extraction if Gemini returned null date
-          setReadingDate(extractDateFromFile(file));
+          setReadingDate(extractDateFromFile(file, selectedYear));
         }
         
         if (extracted.isSimulated) {
@@ -1384,6 +1398,50 @@ export default function TenantDashboard({ user, onLogout }: TenantDashboardProps
               <div className="p-4 overflow-y-auto flex-1 max-h-[60vh] space-y-4">
                 {activeTab === "single" ? (
                   <form onSubmit={handleAddReadingSubmit} className="space-y-4">
+                    {/* Year Selector Control */}
+                    <div className="p-2.5 bg-blue-50/50 rounded border border-blue-200/80 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                          <Calendar className="h-3.5 w-3.5 text-blue-600" /> Año de la Lectura
+                        </label>
+                        <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
+                          {selectedYear}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleReadingYearChange(currentYear)}
+                          className={`py-1 px-2 rounded text-[11px] font-bold border transition cursor-pointer ${
+                            selectedYear === currentYear
+                              ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                              : "bg-white text-slate-700 border-slate-250 hover:bg-slate-100"
+                          }`}
+                        >
+                          {currentYear} (Año actual)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleReadingYearChange(currentYear - 1)}
+                          className={`py-1 px-2 rounded text-[11px] font-bold border transition cursor-pointer ${
+                            selectedYear === currentYear - 1
+                              ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                              : "bg-white text-slate-700 border-slate-250 hover:bg-slate-100"
+                          }`}
+                        >
+                          {currentYear - 1} (Año anterior)
+                        </button>
+                      </div>
+                      {isJanuary && (
+                        <p className="text-[10px] text-amber-800 bg-amber-50 p-1.5 rounded border border-amber-200 flex items-start gap-1">
+                          <span className="shrink-0">💡</span>
+                          <span>
+                            <strong>Enero:</strong> Si estás subiendo la lectura de Diciembre del año pasado, pulsa <strong>{currentYear - 1}</strong>.
+                          </span>
+                        </p>
+                      )}
+                    </div>
+
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Fecha de Lectura</label>
